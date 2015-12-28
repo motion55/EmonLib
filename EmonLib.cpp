@@ -55,6 +55,8 @@ void EnergyMonitor::currentTX(unsigned int _channel, double _ICAL)
    offsetI = ADC_COUNTS>>1;
 }
 
+#define DC_SAMPLES  256
+
 //--------------------------------------------------------------------------------------
 // emon_calc procedure
 // Calculates realPower,apparentPower,powerFactor,Vrms,Irms,kWh increment
@@ -69,8 +71,13 @@ void EnergyMonitor::calcVI(unsigned int crossings, unsigned int timeout)
 	int SupplyVoltage = readVcc();
    #endif
 
-  unsigned int crossCount = 0;                             //Used to measure number of times threshold is crossed.
-  unsigned int numberOfSamples = 0;                        //This is now incremented  
+	//Reset accumulators
+	sumVlong = 0;
+	sumIlong = 0;
+	sumPlong = 0;
+
+	unsigned int crossCount = 0;                             //Used to measure number of times threshold is crossed.
+	unsigned int numberOfSamples = 0;                        //This is now incremented  
 
   //-------------------------------------------------------------------------------------------------------------------------
   // 1) Waits for the waveform to be close to 'zero' (mid-scale adc) part in sin curve.
@@ -99,40 +106,48 @@ void EnergyMonitor::calcVI(unsigned int crossings, unsigned int timeout)
     //-----------------------------------------------------------------------------
     // A) Read in raw voltage and current samples
     //-----------------------------------------------------------------------------
-    sampleV = analogRead(inPinV);                 //Read in raw voltage signal
-    sampleI = analogRead(inPinI);                 //Read in raw current signal
+    sampleVshort = analogRead(inPinV);                 //Read in raw voltage signal
+    sampleIshort = analogRead(inPinI);                 //Read in raw current signal
 
     //-----------------------------------------------------------------------------
     // B) Apply digital low pass filters to extract the 2.5 V or 1.65 V dc offset,
     //     then subtract this - signal is now centred on 0 counts.
     //-----------------------------------------------------------------------------
-    offsetV = offsetV + ((sampleV-offsetV)/1024);
-	filteredV = sampleV - offsetV;
-    offsetI = offsetI + ((sampleI-offsetI)/1024);
-	filteredI = sampleI - offsetI;
-   
+	offsetVlong -= offsetVshort;
+	offsetVlong += sampleVshort;
+	offsetVshort = offsetVlong / DC_SAMPLES;
+	int filteredV = sampleIshort - offsetIshort;
+
+	offsetIlong -= offsetIshort;
+	offsetIlong += sampleIshort;
+	offsetIshort = offsetIlong / DC_SAMPLES;
+	int filteredI = sampleIshort - offsetIshort;
+
     //-----------------------------------------------------------------------------
     // C) Root-mean-square method voltage
     //-----------------------------------------------------------------------------  
-    sqV= filteredV * filteredV;                 //1) square voltage values
-    sumV += sqV;                                //2) sum
+	long int sqVlong = filteredV;
+	sqVlong *= sqVlong;                //1) square voltage values
+    sumVlong += sqVlong;               //2) sum
     
     //-----------------------------------------------------------------------------
     // D) Root-mean-square method current
     //-----------------------------------------------------------------------------   
-    sqI = filteredI * filteredI;                //1) square current values
-    sumI += sqI;                                //2) sum 
+	long int sqIlong = filteredI;
+	sqIlong *= sqIlong;                //1) square current values
+	sumIlong += sqIlong;               //2) sum 
     
     //-----------------------------------------------------------------------------
     // E) Phase calibration
     //-----------------------------------------------------------------------------
-    phaseShiftedV = lastFilteredV + PHASECAL * (filteredV - lastFilteredV); 
+    int phaseShiftedV = lastFilteredV + PHASECAL * (filteredV - lastFilteredV); 
     
     //-----------------------------------------------------------------------------
     // F) Instantaneous power calc
     //-----------------------------------------------------------------------------   
-    instP = phaseShiftedV * filteredI;          //Instantaneous Power
-    sumP +=instP;                               //Sum  
+	long int instPlong = phaseShiftedV;
+	instPlong *= filteredI; 	//Instantaneous Power
+    sumPlong += instPlong;									//Sum  
     
     //-----------------------------------------------------------------------------
     // G) Find the number of times the voltage has crossed the initial voltage
@@ -140,7 +155,7 @@ void EnergyMonitor::calcVI(unsigned int crossings, unsigned int timeout)
     //    - so this method allows us to sample an integer number of half wavelengths which increases accuracy
     //-----------------------------------------------------------------------------       
     lastVCross = checkVCross;                     
-    if (sampleV > startV) checkVCross = true; 
+    if (sampleVshort > startV) checkVCross = true; 
                      else checkVCross = false;
     if (numberOfSamples==1) lastVCross = checkVCross;                  
                      
@@ -164,10 +179,6 @@ void EnergyMonitor::calcVI(unsigned int crossings, unsigned int timeout)
   apparentPower = Vrms * Irms;
   powerFactor=realPower / apparentPower;
 
-  //Reset accumulators
-  sumV = 0;
-  sumI = 0;
-  sumP = 0;
 //--------------------------------------------------------------------------------------       
 }
 
@@ -181,28 +192,29 @@ double EnergyMonitor::calcIrms(unsigned int Number_of_Samples)
 	int SupplyVoltage = readVcc();
    #endif
 
-  
+  //Reset accumulators
+  sumIlong = 0;
+
   for (unsigned int n = 0; n < Number_of_Samples; n++)
   {
-    sampleI = analogRead(inPinI);
+    sampleIshort = analogRead(inPinI);
 
     // Digital low pass filter extracts the 2.5 V or 1.65 V dc offset, 
 	//  then subtract this - signal is now centered on 0 counts.
-    offsetI = (offsetI + (sampleI-offsetI)/1024);
-	filteredI = sampleI - offsetI;
+	offsetIlong -= offsetIshort;
+	offsetIlong += sampleIshort;
+	offsetIshort = offsetIlong / DC_SAMPLES;
+	int filteredI = sampleIshort - offsetIshort;
 
     // Root-mean-square method current
-    // 1) square current values
-    sqI = filteredI * filteredI;
-    // 2) sum 
-    sumI += sqI;
+	long int sqIlong = filteredI;
+	sqIlong *= sqIlong;                //1) square current values
+	sumIlong += sqIlong;               //2) sum 
   }
 
-  double I_RATIO = ICAL *((SupplyVoltage/1000.0) / (ADC_COUNTS));
-  Irms = I_RATIO * sqrt(sumI / Number_of_Samples); 
+  double I_RATIO = (ICAL*SupplyVoltage)/(1000.0*ADC_COUNTS);
+  Irms = I_RATIO * sqrt((double)sumIlong / Number_of_Samples); 
 
-  //Reset accumulators
-  sumI = 0;
 //--------------------------------------------------------------------------------------       
  
   return Irms;
