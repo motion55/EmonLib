@@ -25,14 +25,14 @@ void EnergyMonitor::voltage(unsigned int _inPinV, double _VCAL, double _PHASECAL
    inPinV = _inPinV;
    VCAL = _VCAL;
    PHASECAL = _PHASECAL;
-   offsetV = ADC_COUNTS>>1;
+   offsetVshort = ADC_COUNTS>>1;
 }
 
 void EnergyMonitor::current(unsigned int _inPinI, double _ICAL)
 {
    inPinI = _inPinI;
    ICAL = _ICAL;
-   offsetI = ADC_COUNTS>>1;
+   offsetIshort = ADC_COUNTS>>1;
 }
 
 //--------------------------------------------------------------------------------------
@@ -43,7 +43,7 @@ void EnergyMonitor::voltageTX(double _VCAL, double _PHASECAL)
    inPinV = 2;
    VCAL = _VCAL;
    PHASECAL = _PHASECAL;
-   offsetV = ADC_COUNTS>>1;
+   offsetVshort = ADC_COUNTS>>1;
 }
 
 void EnergyMonitor::currentTX(unsigned int _channel, double _ICAL)
@@ -52,7 +52,7 @@ void EnergyMonitor::currentTX(unsigned int _channel, double _ICAL)
    if (_channel == 2) inPinI = 0;
    if (_channel == 3) inPinI = 1;
    ICAL = _ICAL;
-   offsetI = ADC_COUNTS>>1;
+   offsetIshort = ADC_COUNTS>>1;
 }
 
 #define DC_SAMPLES  256
@@ -116,12 +116,12 @@ void EnergyMonitor::calcVI(unsigned int crossings, unsigned int timeout)
 	offsetVlong -= offsetVshort;
 	offsetVlong += sampleVshort;
 	offsetVshort = offsetVlong / DC_SAMPLES;
-	int filteredV = sampleIshort - offsetIshort;
+	filteredV = sampleIshort - offsetIshort;
 
 	offsetIlong -= offsetIshort;
 	offsetIlong += sampleIshort;
 	offsetIshort = offsetIlong / DC_SAMPLES;
-	int filteredI = sampleIshort - offsetIshort;
+	filteredI = sampleIshort - offsetIshort;
 
     //-----------------------------------------------------------------------------
     // C) Root-mean-square method voltage
@@ -168,14 +168,14 @@ void EnergyMonitor::calcVI(unsigned int crossings, unsigned int timeout)
   //Calculation of the root of the mean of the voltage and current squared (rms)
   //Calibration coefficients applied. 
   
-  double V_RATIO = VCAL *((SupplyVoltage/1000.0) / (ADC_COUNTS));
-  Vrms = V_RATIO * sqrt(sumV / numberOfSamples); 
+  double V_RATIO = (VCAL*SupplyVoltage) / (1000.0*ADC_COUNTS);
+  Vrms = V_RATIO * sqrt((double)sumVlong / numberOfSamples); 
   
-  double I_RATIO = ICAL *((SupplyVoltage/1000.0) / (ADC_COUNTS));
-  Irms = I_RATIO * sqrt(sumI / numberOfSamples); 
+  double I_RATIO = (ICAL*SupplyVoltage) / (1000.0*ADC_COUNTS);
+  Irms = I_RATIO * sqrt((double)sumIlong / numberOfSamples); 
 
   //Calculation power values
-  realPower = V_RATIO * I_RATIO * sumP / numberOfSamples;
+  realPower = V_RATIO * I_RATIO * sumPlong / numberOfSamples;
   apparentPower = Vrms * Irms;
   powerFactor=realPower / apparentPower;
 

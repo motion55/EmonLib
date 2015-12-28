@@ -81,8 +81,8 @@ class EnergyMonitor
 	int sampleVshort;  							 //sample_ holds the raw analog read value
 	int sampleIshort;                     
 
-	int lastFilteredV;          //Filtered_ is the raw analog value minus the DC offset
-	long int offsetVlong,offsetIlong;   
+	int lastFilteredV, filteredV, filteredI;          //Filtered_ is the raw analog value minus the DC offset
+	long int offsetVlong, offsetIlong;   
 	int offsetVshort, offsetIshort;     	          //Low-pass filter output               
 	long int sumVlong, sumIlong, sumPlong;
 
