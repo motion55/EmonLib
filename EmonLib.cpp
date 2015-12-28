@@ -183,7 +183,7 @@ void EnergyMonitor::calcVI(unsigned int crossings, unsigned int timeout)
 }
 
 //--------------------------------------------------------------------------------------
-double EnergyMonitor::calcIrms(unsigned int Number_of_Samples)
+double EnergyMonitor::calcIrms(unsigned int Sampling_Time_ms)
 {
   
    #if defined emonTxV3
@@ -195,7 +195,10 @@ double EnergyMonitor::calcIrms(unsigned int Number_of_Samples)
   //Reset accumulators
   sumIlong = 0;
 
-  for (unsigned int n = 0; n < Number_of_Samples; n++)
+  unsigned int Number_of_Samples;
+  unsigned long start = millis();
+
+  for (Number_of_Samples = 0; (millis()-start)<Sampling_Time_ms; Number_of_Samples++)
   {
     sampleIshort = analogRead(inPinI);
 
@@ -204,7 +207,7 @@ double EnergyMonitor::calcIrms(unsigned int Number_of_Samples)
 	offsetIlong -= offsetIshort;
 	offsetIlong += sampleIshort;
 	offsetIshort = offsetIlong / DC_SAMPLES;
-	int filteredI = sampleIshort - offsetIshort;
+	filteredI = sampleIshort - offsetIshort;
 
     // Root-mean-square method current
 	long int sqIlong = filteredI;

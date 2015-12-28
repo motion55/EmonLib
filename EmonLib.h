@@ -53,7 +53,7 @@ class EnergyMonitor
     void currentTX(unsigned int _channel, double _ICAL);
 
     void calcVI(unsigned int crossings, unsigned int timeout);
-    double calcIrms(unsigned int NUMBER_OF_SAMPLES);
+	double calcIrms(unsigned int Sampling_Time_ms);
     void serialprint();
 
     long readVcc();
