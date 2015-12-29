@@ -91,39 +91,39 @@ void EnergyMonitor::current(unsigned int _inPinI, double _ICAL)
 //--------------------------------------------------------------------------------------
 void EnergyMonitor::voltageTX(double _VCAL, double _PHASECAL)
 {
-	 inPinV = 2;
-	 VCAL = _VCAL;
-	 PHASECAL = _PHASECAL;
+	inPinV = 2;
+	VCAL = _VCAL;
+	PHASECAL = _PHASECAL;
 
-	 unsigned long int start = millis();
+	unsigned long int start = millis();
 
-	 offsetVlong = 0;
-	 for (SampleCount = 0; (millis() - start)<sampling_time_ms; SampleCount++)
-	 {
+	offsetVlong = 0;
+	for (SampleCount = 0; (millis() - start)<sampling_time_ms; SampleCount++)
+	{
 		 offsetVlong += analogRead(inPinV);
-	 }
-	 offsetVshort = offsetVlong / SampleCount;
-	 offsetVlong = DC_SAMPLES;
-	 offsetVlong *= offsetVshort;
+	}
+	offsetVshort = offsetVlong / SampleCount;
+	offsetVlong = DC_SAMPLES;
+	offsetVlong *= offsetVshort;
 }
 
 void EnergyMonitor::currentTX(unsigned int _channel, double _ICAL)
 {
-	 if (_channel == 1) inPinI = 3;
-	 if (_channel == 2) inPinI = 0;
-	 if (_channel == 3) inPinI = 1;
-	 ICAL = _ICAL;
+	if (_channel == 1) inPinI = 3;
+	if (_channel == 2) inPinI = 0;
+	if (_channel == 3) inPinI = 1;
+	ICAL = _ICAL;
 
-	 unsigned long int start = millis();
+	unsigned long int start = millis();
 
-	 offsetIlong = 0;
-	 for (SampleCount = 0; (millis() - start)<sampling_time_ms; SampleCount++)
-	 {
-		 offsetIlong += analogRead(inPinI);
-	 }
-	 offsetIshort = offsetIlong / SampleCount;
-	 offsetIlong = DC_SAMPLES;
-	 offsetIlong *= offsetIshort;
+	offsetIlong = 0;
+	for (SampleCount = 0; (millis() - start)<sampling_time_ms; SampleCount++)
+	{
+		offsetIlong += analogRead(inPinI);
+	}
+	offsetIshort = offsetIlong / SampleCount;
+	offsetIlong = DC_SAMPLES;
+	offsetIlong *= offsetIshort;
 }
 
 //--------------------------------------------------------------------------------------
@@ -134,11 +134,11 @@ void EnergyMonitor::currentTX(unsigned int _channel, double _ICAL)
 //--------------------------------------------------------------------------------------
 void EnergyMonitor::calcVI(unsigned int Sampling_Time_ms)
 {
-	 #if defined emonTxV3
+	#if defined emonTxV3
 	int SupplyVoltage=3300;
-	 #else 
+	#else 
 	int SupplyVoltage = readVcc();
-	 #endif
+	#endif
 
 	//Reset accumulators
 	sumVlong = 0;
