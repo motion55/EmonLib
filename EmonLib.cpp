@@ -183,6 +183,47 @@ void EnergyMonitor::calcVI(unsigned int crossings, unsigned int timeout)
 }
 
 //--------------------------------------------------------------------------------------
+double EnergyMonitor::calcVrms(unsigned int Sampling_Time_ms)
+{
+
+#if defined emonTxV3
+	int SupplyVoltage = 3300;
+#else 
+	int SupplyVoltage = readVcc();
+#endif
+
+	//Reset accumulators
+	sumVlong = 0;
+
+	unsigned int Number_of_Samples;
+	unsigned long start = millis();
+
+	for (Number_of_Samples = 0; (millis() - start) < Sampling_Time_ms; Number_of_Samples++)
+	{
+		sampleVshort = analogRead(inPinI);
+
+		// Digital low pass filter extracts the 2.5 V or 1.65 V dc offset, 
+		//  then subtract this - signal is now centered on 0 counts.
+		offsetVlong -= offsetVshort;
+		offsetVlong += sampleVshort;
+		offsetVshort = offsetVlong / DC_SAMPLES;
+		filteredV = sampleVshort - offsetVshort;
+
+		// Root-mean-square method current
+		long int sqVlong = filteredV;
+		sqVlong *= sqVlong;                //1) square current values
+		sumVlong += sqVlong;               //2) sum 
+	}
+
+	double V_RATIO = (VCAL*SupplyVoltage) / (1000.0*ADC_COUNTS);
+	Vrms = V_RATIO * sqrt((double)sumVlong / Number_of_Samples);
+
+	//--------------------------------------------------------------------------------------       
+
+	return Vrms;
+}
+
+//--------------------------------------------------------------------------------------
 double EnergyMonitor::calcIrms(unsigned int Sampling_Time_ms)
 {
   
