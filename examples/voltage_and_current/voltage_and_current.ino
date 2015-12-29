@@ -13,7 +13,7 @@ void setup()
 
 void loop()
 {
-  emon1.calcVI(20,2000);         // Calculate all. No.of half wavelengths (crossings), time-out
+  emon1.calcVI(60,1000);         // Calculate all. No.of half wavelengths (crossings), time-out
   emon1.serialprint();           // Print out all variables (realpower, apparent power, Vrms, Irms, power factor)
   
   float realPower       = emon1.realPower;        //extract Real Power into variable

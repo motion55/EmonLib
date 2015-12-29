@@ -66,8 +66,9 @@ class EnergyMonitor
        Irms;
 
   private:
+	const unsigned long int sampling_time_ms = 1000;
 
-    //Set Voltage and current input pins
+	//Set Voltage and current input pins
     unsigned int inPinV;
     unsigned int inPinI;
     //Calibration coefficients
@@ -76,7 +77,8 @@ class EnergyMonitor
     double ICAL;
     double PHASECAL;
 
-    //--------------------------------------------------------------------------------------
+  public:
+	//--------------------------------------------------------------------------------------
     // Variable declaration for emon_calc procedure
     //--------------------------------------------------------------------------------------
 	int sampleVshort;  							 //sample_ holds the raw analog read value
@@ -87,6 +89,7 @@ class EnergyMonitor
 	int offsetVshort, offsetIshort;     	          //Low-pass filter output               
 	long int sumVlong, sumIlong, sumPlong;
 
+	unsigned int SampleCount;
 	int startV;                                       //Instantaneous voltage at start of sample window.
 
 	boolean lastVCross, checkVCross;                  //Used to measure number of times threshold is crossed.

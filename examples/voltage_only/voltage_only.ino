@@ -14,6 +14,11 @@ void loop()
 {
   double Vrms = emon1.calcVrms(1000);  // Calculate Vrms only
   
-  Serial.print(" Vrms =");
+  Serial.print(emon1.sampleVshort);
+  Serial.print(" ");
+  Serial.print(emon1.offsetVshort);
+  Serial.print(" ");
+  Serial.print(emon1.SampleCount);
+  Serial.print(" Vrms = ");
   Serial.println(Vrms);		       // Vrms
 }

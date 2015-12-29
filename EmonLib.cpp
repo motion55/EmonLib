@@ -16,23 +16,74 @@
 #include "WProgram.h"
 #endif
 
+#define DC_SAMPLES  1024l
 
 //--------------------------------------------------------------------------------------
 // Sets the pins to be used for voltage and current sensors
 //--------------------------------------------------------------------------------------
 void EnergyMonitor::voltage(unsigned int _inPinV, double _VCAL, double _PHASECAL)
 {
-   inPinV = _inPinV;
-   VCAL = _VCAL;
-   PHASECAL = _PHASECAL;
-   offsetVshort = ADC_COUNTS>>1;
+#if defined(analogPinToChannel)
+#if defined(__AVR_ATmega32U4__)
+	if (_inPinV >= 18) _inPinV -= 18; // allow for channel or pin numbers
+#endif
+	_inPinV = analogPinToChannel(_inPinV);
+#elif defined(__AVR_ATmega1280__) || defined(__AVR_ATmega2560__)
+	if (_inPinV >= 54) _inPinV -= 54; // allow for channel or pin numbers
+#elif defined(__AVR_ATmega32U4__)
+	if (_inPinV >= 18) _inPinV -= 18; // allow for channel or pin numbers
+#elif defined(__AVR_ATmega1284__) || defined(__AVR_ATmega1284P__) || defined(__AVR_ATmega644__) || defined(__AVR_ATmega644A__) || defined(__AVR_ATmega644P__) || defined(__AVR_ATmega644PA__)
+	if (_inPinV >= 24) _inPinV -= 24; // allow for channel or pin numbers
+#else
+	if (_inPinV >= 14) _inPinV -= 14; // allow for channel or pin numbers
+#endif
+	inPinV = _inPinV;
+	VCAL = _VCAL;
+	PHASECAL = _PHASECAL;
+
+	offsetVlong = 0;
+
+	unsigned long int start = millis();
+	for (SampleCount = 0; (millis() - start) < sampling_time_ms; SampleCount++)
+	{
+		sampleVshort = analogRead(inPinV);
+		offsetVlong += sampleVshort;
+		if (sampleVshort > startV) startV = sampleVshort;
+	}
+	offsetVshort = offsetVlong / SampleCount;
+	offsetVlong = DC_SAMPLES;
+	offsetVlong *= offsetVshort;
 }
 
 void EnergyMonitor::current(unsigned int _inPinI, double _ICAL)
 {
-   inPinI = _inPinI;
-   ICAL = _ICAL;
-   offsetIshort = ADC_COUNTS>>1;
+#if defined(analogPinToChannel)
+#if defined(__AVR_ATmega32U4__)
+	if (_inPinI >= 18) _inPinI -= 18; // allow for channel or pin numbers
+#endif
+	_inPinI = analogPinToChannel(_inPinI);
+#elif defined(__AVR_ATmega1280__) || defined(__AVR_ATmega2560__)
+	if (_inPinI >= 54) _inPinI -= 54; // allow for channel or pin numbers
+#elif defined(__AVR_ATmega32U4__)
+	if (_inPinI >= 18) _inPinI -= 18; // allow for channel or pin numbers
+#elif defined(__AVR_ATmega1284__) || defined(__AVR_ATmega1284P__) || defined(__AVR_ATmega644__) || defined(__AVR_ATmega644A__) || defined(__AVR_ATmega644P__) || defined(__AVR_ATmega644PA__)
+	if (_inPinI >= 24) _inPinI -= 24; // allow for channel or pin numbers
+#else
+	if (_inPinI >= 14) _inPinI -= 14; // allow for channel or pin numbers
+#endif
+	inPinI = _inPinI;
+	ICAL = _ICAL;
+
+	unsigned long int start = millis();
+
+	offsetIlong = 0;
+	for (SampleCount = 0; (millis() - start)<sampling_time_ms; SampleCount++)
+	{
+		offsetIlong += analogRead(inPinI);
+	}
+	offsetIshort = offsetIlong / SampleCount;
+	offsetIlong = DC_SAMPLES;
+	offsetIlong *= offsetIshort;
 }
 
 //--------------------------------------------------------------------------------------
@@ -43,7 +94,17 @@ void EnergyMonitor::voltageTX(double _VCAL, double _PHASECAL)
    inPinV = 2;
    VCAL = _VCAL;
    PHASECAL = _PHASECAL;
-   offsetVshort = ADC_COUNTS>>1;
+
+   unsigned long int start = millis();
+
+   offsetVlong = 0;
+   for (SampleCount = 0; (millis() - start)<sampling_time_ms; SampleCount++)
+   {
+	   offsetVlong += analogRead(inPinV);
+   }
+   offsetVshort = offsetVlong / SampleCount;
+   offsetVlong = DC_SAMPLES;
+   offsetVlong *= offsetVshort;
 }
 
 void EnergyMonitor::currentTX(unsigned int _channel, double _ICAL)
@@ -52,10 +113,18 @@ void EnergyMonitor::currentTX(unsigned int _channel, double _ICAL)
    if (_channel == 2) inPinI = 0;
    if (_channel == 3) inPinI = 1;
    ICAL = _ICAL;
-   offsetIshort = ADC_COUNTS>>1;
-}
 
-#define DC_SAMPLES  256
+   unsigned long int start = millis();
+
+   offsetIlong = 0;
+   for (SampleCount = 0; (millis() - start)<sampling_time_ms; SampleCount++)
+   {
+	   offsetIlong += analogRead(inPinI);
+   }
+   offsetIshort = offsetIlong / SampleCount;
+   offsetIlong = DC_SAMPLES;
+   offsetIlong *= offsetIshort;
+}
 
 //--------------------------------------------------------------------------------------
 // emon_calc procedure
@@ -79,24 +148,48 @@ void EnergyMonitor::calcVI(unsigned int crossings, unsigned int timeout)
 	unsigned int crossCount = 0;                             //Used to measure number of times threshold is crossed.
 	unsigned int numberOfSamples = 0;                        //This is now incremented  
 
-  //-------------------------------------------------------------------------------------------------------------------------
-  // 1) Waits for the waveform to be close to 'zero' (mid-scale adc) part in sin curve.
-  //-------------------------------------------------------------------------------------------------------------------------
-  boolean st=false;                                  //an indicator to exit the while loop
+	//-------------------------------------------------------------------------------------------------------------------------
+	// 1) Waits for the waveform to be close to 'zero' (mid-scale adc) part in sin curve.
+	//-------------------------------------------------------------------------------------------------------------------------
+	boolean st=false;                                  //an indicator to exit the while loop
 
-  unsigned long start = millis();    //millis()-start makes sure it doesnt get stuck in the loop if there is an error.
+	unsigned long start = millis();    //millis()-start makes sure it doesnt get stuck in the loop if there is an error.
 
-  while(st==false)                                   //the while loop...
-  {
-     startV = analogRead(inPinV);                    //using the voltage waveform
-     if ((startV < (ADC_COUNTS*0.55)) && (startV > (ADC_COUNTS*0.45))) st=true;  //check its within range
-     if ((millis()-start)>timeout) st = true;
-  }
+	while(st==false)                                   //the while loop...
+	{
+		sampleVshort = analogRead(inPinV);                    //using the voltage waveform
+
+		offsetVlong -= offsetVshort;
+		offsetVlong += sampleVshort;
+		offsetVshort = offsetVlong / DC_SAMPLES;
+		filteredV = sampleVshort - offsetVshort;
+
+		startV = (offsetVshort * 7) / 8;
+
+		if (sampleVshort<startV) st = true;
+		if ((millis()-start)>sampling_time_ms) st = true;
+	}
   
+	start = millis();    //millis()-start makes sure it doesnt get stuck in the loop if there is an error.
+
+	while (st==false)                                   //the while loop...
+	{
+		sampleVshort = analogRead(inPinV);                    //using the voltage waveform
+
+		offsetVlong -= offsetVshort;
+		offsetVlong += sampleVshort;
+		offsetVshort = offsetVlong / DC_SAMPLES;
+		filteredV = sampleVshort - offsetVshort;
+
+		if (sampleVshort>offsetVshort) st = true;
+		if ((millis() - start) > sampling_time_ms) st = true;
+	}
+
   //-------------------------------------------------------------------------------------------------------------------------
   // 2) Main measurement loop
   //------------------------------------------------------------------------------------------------------------------------- 
-  start = millis(); 
+	SampleCount = 0;
+	start = millis();
 
   while ((crossCount < crossings) && ((millis()-start)<timeout)) 
   {
@@ -106,24 +199,25 @@ void EnergyMonitor::calcVI(unsigned int crossings, unsigned int timeout)
     //-----------------------------------------------------------------------------
     // A) Read in raw voltage and current samples
     //-----------------------------------------------------------------------------
-    sampleVshort = analogRead(inPinV);                 //Read in raw voltage signal
-    sampleIshort = analogRead(inPinI);                 //Read in raw current signal
+	sampleIshort = analogRead(inPinI);                 //Read in raw current signal
+	sampleVshort = analogRead(inPinV);                 //Read in raw voltage signal
+	SampleCount++;
 
     //-----------------------------------------------------------------------------
     // B) Apply digital low pass filters to extract the 2.5 V or 1.65 V dc offset,
     //     then subtract this - signal is now centred on 0 counts.
     //-----------------------------------------------------------------------------
-	offsetVlong -= offsetVshort;
-	offsetVlong += sampleVshort;
-	offsetVshort = offsetVlong / DC_SAMPLES;
-	filteredV = sampleIshort - offsetIshort;
-
 	offsetIlong -= offsetIshort;
 	offsetIlong += sampleIshort;
 	offsetIshort = offsetIlong / DC_SAMPLES;
 	filteredI = sampleIshort - offsetIshort;
 
-    //-----------------------------------------------------------------------------
+	offsetVlong -= offsetVshort;
+	offsetVlong += sampleVshort;
+	offsetVshort = offsetVlong / DC_SAMPLES;
+	filteredV = sampleVshort - offsetVshort;
+
+	//-----------------------------------------------------------------------------
     // C) Root-mean-square method voltage
     //-----------------------------------------------------------------------------  
 	long int sqVlong = filteredV;
@@ -156,7 +250,7 @@ void EnergyMonitor::calcVI(unsigned int crossings, unsigned int timeout)
     //-----------------------------------------------------------------------------       
     lastVCross = checkVCross;                     
     if (sampleVshort > startV) checkVCross = true; 
-                     else checkVCross = false;
+                          else checkVCross = false;
     if (numberOfSamples==1) lastVCross = checkVCross;                  
                      
     if (lastVCross != checkVCross) crossCount++;
@@ -185,7 +279,6 @@ void EnergyMonitor::calcVI(unsigned int crossings, unsigned int timeout)
 //--------------------------------------------------------------------------------------
 double EnergyMonitor::calcVrms(unsigned int Sampling_Time_ms)
 {
-
 #if defined emonTxV3
 	int SupplyVoltage = 3300;
 #else 
@@ -195,12 +288,22 @@ double EnergyMonitor::calcVrms(unsigned int Sampling_Time_ms)
 	//Reset accumulators
 	sumVlong = 0;
 
-	unsigned int Number_of_Samples;
 	unsigned long start = millis();
 
-	for (Number_of_Samples = 0; (millis() - start) < Sampling_Time_ms; Number_of_Samples++)
+	sampleVshort = analogRead(inPinV);
+
+	for (SampleCount = 0; (millis() - start) < Sampling_Time_ms; SampleCount++)
 	{
-		sampleVshort = analogRead(inPinI);
+		while (bit_is_set(ADCSRA, ADSC)); //wait for AD conversion complete.
+
+		//read the ADC conversion result.
+		uint8_t low = ADCL;
+		uint8_t high = ADCH;
+
+		//start the next conversion
+		_SFR_BYTE(ADCSRA) |= _BV(ADSC);
+
+		sampleVshort = (int)(high << 8) + low;
 
 		// Digital low pass filter extracts the 2.5 V or 1.65 V dc offset, 
 		//  then subtract this - signal is now centered on 0 counts.
@@ -216,9 +319,7 @@ double EnergyMonitor::calcVrms(unsigned int Sampling_Time_ms)
 	}
 
 	double V_RATIO = (VCAL*SupplyVoltage) / (1000.0*ADC_COUNTS);
-	Vrms = V_RATIO * sqrt((double)sumVlong / Number_of_Samples);
-
-	//--------------------------------------------------------------------------------------       
+	Vrms = V_RATIO * sqrt((double)sumVlong / SampleCount);
 
 	return Vrms;
 }
@@ -236,12 +337,22 @@ double EnergyMonitor::calcIrms(unsigned int Sampling_Time_ms)
   //Reset accumulators
   sumIlong = 0;
 
-  unsigned int Number_of_Samples;
   unsigned long start = millis();
 
-  for (Number_of_Samples = 0; (millis()-start)<Sampling_Time_ms; Number_of_Samples++)
+  sampleIshort = analogRead(inPinI);
+
+  for (SampleCount = 0; (millis()-start)<Sampling_Time_ms; SampleCount++)
   {
-    sampleIshort = analogRead(inPinI);
+	  while (bit_is_set(ADCSRA, ADSC)); //wait for AD conversion complete.
+
+      //read the ADC conversion result.
+	  uint8_t low = ADCL;
+	  uint8_t high = ADCH;
+
+	  //start the next conversion
+	  _SFR_BYTE(ADCSRA) |= _BV(ADSC);
+
+	  sampleIshort = (int)(high << 8) + low;
 
     // Digital low pass filter extracts the 2.5 V or 1.65 V dc offset, 
 	//  then subtract this - signal is now centered on 0 counts.
@@ -256,11 +367,9 @@ double EnergyMonitor::calcIrms(unsigned int Sampling_Time_ms)
 	sumIlong += sqIlong;               //2) sum 
   }
 
-  double I_RATIO = (ICAL*SupplyVoltage)/(1000.0*ADC_COUNTS);
-  Irms = I_RATIO * sqrt((double)sumIlong / Number_of_Samples); 
+  double I_RATIO = (ICAL*SupplyVoltage)/(1000.0f*ADC_COUNTS);
+  Irms = I_RATIO * sqrt((double)sumIlong / SampleCount); 
 
-//--------------------------------------------------------------------------------------       
- 
   return Irms;
 }
 
