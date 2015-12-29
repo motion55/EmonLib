@@ -8,12 +8,12 @@ void setup()
   Serial.begin(9600);
   
   emon1.voltage(2, 234.26, 1.7);  // Voltage: input pin, calibration, phase_shift
-  emon1.current(1, 111.1);       // Current: input pin, calibration.
+  emon1.current(1, 60.0);       // Current: input pin, calibration.
 }
 
 void loop()
 {
-  emon1.calcVI(60,1000);         // Calculate all. No.of half wavelengths (crossings), time-out
+  emon1.calcVI(1000);            // 1000ms sampling time
   emon1.serialprint();           // Print out all variables (realpower, apparent power, Vrms, Irms, power factor)
   
   float realPower       = emon1.realPower;        //extract Real Power into variable
