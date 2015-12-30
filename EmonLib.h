@@ -77,6 +77,16 @@ private:
 	double ICAL;
 	double PHASECAL;
 
+	inline void SelectAnalogPin(unsigned int pin)
+	{
+		#if defined(ADCSRB) && defined(MUX5)
+		ADCSRB = (ADCSRB & ~(1 << MUX5)) | (((pin >> 3) & 0x01) << MUX5);
+		#endif
+		#if defined(ADMUX)
+		ADMUX = (ADMUX & ~0x07) | (pin & 0x07);
+		#endif
+	};
+
 public:
 	//--------------------------------------------------------------------------------------
 	// Variable declaration for emon_calc procedure
@@ -90,10 +100,6 @@ public:
 	long int sumVlong, sumIlong, sumPlong;
 
 	unsigned int SampleCount;
-	int startV;                                       //Instantaneous voltage at start of sample window.
-
-	boolean lastVCross, checkVCross;                  //Used to measure number of times threshold is crossed.
-
 };
 
 #endif

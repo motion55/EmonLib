@@ -48,7 +48,6 @@ void EnergyMonitor::voltage(unsigned int _inPinV, double _VCAL, double _PHASECAL
 	{
 		sampleVshort = analogRead(inPinV);
 		offsetVlong += sampleVshort;
-		if (sampleVshort > startV) startV = sampleVshort;
 	}
 	offsetVshort = offsetVlong / SampleCount;
 	offsetVlong = DC_SAMPLES;
@@ -148,8 +147,6 @@ void EnergyMonitor::calcVI(unsigned int Sampling_Time_ms)
 	//-------------------------------------------------------------------------------------------------------------------------
 	// 2) Main measurement loop
 	//------------------------------------------------------------------------------------------------------------------------- 
-	unsigned long start = millis();
-
 	sampleVshort = analogRead(inPinV);
 
 	offsetVlong -= offsetVshort;
@@ -157,24 +154,55 @@ void EnergyMonitor::calcVI(unsigned int Sampling_Time_ms)
 	offsetVshort = offsetVlong / DC_SAMPLES;
 	filteredV = sampleVshort - offsetVshort;
 
+	sampleIshort = analogRead(inPinI);
+
+	unsigned long start = millis();
+
 	for (SampleCount = 0; (millis() - start) < Sampling_Time_ms; SampleCount++)
 	{
 		lastFilteredV = filteredV;               //Used for delay/phase compensation
 		
 		//-----------------------------------------------------------------------------
-		// A) Read in raw voltage and current samples
+		// Read in raw current samples
 		//-----------------------------------------------------------------------------
-		sampleIshort = analogRead(inPinI);                 //Read in raw current signal
-		sampleVshort = analogRead(inPinV);                 //Read in raw voltage signal
+		while (bit_is_set(ADCSRA, ADSC)); //wait for AD conversion complete.
 
-		//-----------------------------------------------------------------------------
-		// B) Apply digital low pass filters to extract the 2.5 V or 1.65 V dc offset,
-		//     then subtract this - signal is now centred on 0 counts.
-		//-----------------------------------------------------------------------------
+		SelectAnalogPin(inPinV);	//Select the next pin to sample
+
+		//read the ADC conversion result.
+		uint8_t low = ADCL;
+		uint8_t high = ADCH;
+
+		sampleIshort = (int)(high << 8) + low;
+
+		_SFR_BYTE(ADCSRA) |= _BV(ADSC); 	//start the next conversion
+
 		offsetIlong -= offsetIshort;
 		offsetIlong += sampleIshort;
 		offsetIshort = offsetIlong / DC_SAMPLES;
 		filteredI = sampleIshort - offsetIshort;
+
+		//-----------------------------------------------------------------------------
+		// Root-mean-square method current
+		//-----------------------------------------------------------------------------   
+		long int sqIlong = filteredI;
+		sqIlong *= sqIlong;                //1) square current values
+		sumIlong += sqIlong;               //2) sum 
+
+		//-----------------------------------------------------------------------------
+		// Read in raw voltage samples
+		//-----------------------------------------------------------------------------
+		while (bit_is_set(ADCSRA, ADSC));	//wait for AD conversion complete.
+
+		SelectAnalogPin(inPinI);	//Select the next pin to sample
+
+		//read the ADC conversion result.							
+		low = ADCL;
+		high = ADCH;
+
+		sampleVshort = (int)(high << 8) + low;
+
+		_SFR_BYTE(ADCSRA) |= _BV(ADSC); 	//start the next conversion
 
 		offsetVlong -= offsetVshort;
 		offsetVlong += sampleVshort;
@@ -187,21 +215,14 @@ void EnergyMonitor::calcVI(unsigned int Sampling_Time_ms)
 		long int sqVlong = filteredV;
 		sqVlong *= sqVlong;                //1) square voltage values
 		sumVlong += sqVlong;               //2) sum
-		
-		//-----------------------------------------------------------------------------
-		// D) Root-mean-square method current
-		//-----------------------------------------------------------------------------   
-		long int sqIlong = filteredI;
-		sqIlong *= sqIlong;                //1) square current values
-		sumIlong += sqIlong;               //2) sum 
-		
+
 		//-----------------------------------------------------------------------------
 		// E) Phase calibration
 		//-----------------------------------------------------------------------------
 		int phaseShiftedV = lastFilteredV + PHASECAL * (filteredV - lastFilteredV); 
 		
 		//-----------------------------------------------------------------------------
-		// F) Instantaneous power calc
+		// F) Instantaneous power calculation
 		//-----------------------------------------------------------------------------   
 		long int instPlong = phaseShiftedV;
 		instPlong *= filteredI; 	//Instantaneous Power
