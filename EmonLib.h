@@ -45,7 +45,7 @@
 class EnergyMonitor
 {
 public:
-	void voltage(unsigned int _inPinV, double _VCAL, double _PHASECAL = 0);
+	void voltage(unsigned int _inPinV, double _VCAL, double _PHASECAL = 0.0);
 	void current(unsigned int _inPinI, double _ICAL);
 
 	void voltageTX(double _VCAL, double _PHASECAL = 0);
@@ -55,6 +55,9 @@ public:
 	double calcVrms(unsigned int Sampling_Time_ms);
 	double calcIrms(unsigned int Sampling_Time_ms);
 	void serialprint();
+
+	void StartMeter(void);
+	void StopMeter(void);
 
 	long readVcc();
 	//Useful value variables
@@ -86,9 +89,11 @@ private:
 		#endif
 	};
 
-public:
-	inline void interrupt_handler() __attribute__((__always_inline__));
+	char MeterStarted;
 	char channel_select;
+
+public:
+	inline void interrupt_handler();
 
 	//--------------------------------------------------------------------------------------
 	// Variable declaration for emon_calc procedure

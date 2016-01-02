@@ -6,7 +6,7 @@ EnergyMonitor emon1;             // Create an instance
 void setup()
 {  
   Serial.begin(9600);
-  
+
   emon1.voltage(2, 234.26);  // Voltage: input pin, calibration, phase_shift
   emon1.current(1, 60.0);       // Current: input pin, calibration.
 }

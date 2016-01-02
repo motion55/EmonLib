@@ -19,9 +19,11 @@
 #define DC_SAMPLES  1024l
 #define PHASE_SCALE	256 
 
+static class EnergyMonitor *_instance;
+
 ISR(ADC_vect)
 {
-//	EnergyMonitor::interrupt_handler();
+	_instance->interrupt_handler();
 }
 
 void EnergyMonitor::interrupt_handler()
@@ -71,6 +73,24 @@ void EnergyMonitor::interrupt_handler()
 	}
 }
 
+void EnergyMonitor::StartMeter(void)
+{
+	if (!MeterStarted)
+	{
+		MeterStarted = 1;
+		_instance = this;
+		SelectAnalogPin(inPinV);
+		channel_select = 0;
+		_SFR_BYTE(ADCSRA) |= _BV(ADSC);
+		_SFR_BYTE(ADCSRA) |= _BV(ADIE);
+	}
+}
+
+void EnergyMonitor::StopMeter(void)
+{
+	_SFR_BYTE(ADCSRA) &= ~_BV(ADIE); 
+	MeterStarted = 0;
+}
 
 //--------------------------------------------------------------------------------------
 // Sets the pins to be used for voltage and current sensors
