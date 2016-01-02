@@ -17,6 +17,60 @@
 #endif
 
 #define DC_SAMPLES  1024l
+#define PHASE_SCALE	256 
+
+ISR(ADC_vect)
+{
+//	EnergyMonitor::interrupt_handler();
+}
+
+void EnergyMonitor::interrupt_handler()
+{
+	if (channel_select==0)
+	{
+		SelectAnalogPin(inPinI);
+		channel_select = 1;
+
+		sampleVshort = ADCL;
+		sampleVshort += (int)(ADCH << 8);
+
+		_SFR_BYTE(ADCSRA) |= _BV(ADSC); 	//start the next conversion
+
+		offsetVlong -= offsetVshort;
+		offsetVlong += sampleVshort;
+		offsetVshort = offsetVlong / DC_SAMPLES;
+		filteredV = sampleVshort - offsetVshort;
+
+		long int sqVlong = filteredV;
+		sqVlong *= sqVlong;                //1) square voltage values
+		sumVlong += sqVlong;               //2) sum
+	}
+	else
+	{
+		SelectAnalogPin(inPinV);
+		channel_select = 0;
+
+		sampleIshort = ADCL;
+		sampleIshort += (int)(ADCH<<8);
+
+		_SFR_BYTE(ADCSRA) |= _BV(ADSC); 	//start the next conversion
+
+		offsetIlong -= offsetIshort;
+		offsetIlong += sampleIshort;
+		offsetIshort = offsetIlong / DC_SAMPLES;
+		filteredI = sampleIshort - offsetIshort;
+
+		long int sqIlong = filteredI;
+		sqIlong *= sqIlong;                //1) square current values
+		sumIlong += sqIlong;               //2) sum 
+
+		long int instPlong = ((long)lastFilteredI*PHASECAL1) + ((long)filteredI*PHASECAL2);
+		instPlong *= filteredI; 	//Instantaneous Power
+		sumPlong += instPlong / PHASE_SCALE;	//Sum  
+		lastFilteredI = filteredI;
+	}
+}
+
 
 //--------------------------------------------------------------------------------------
 // Sets the pins to be used for voltage and current sensors
@@ -39,7 +93,9 @@ void EnergyMonitor::voltage(unsigned int _inPinV, double _VCAL, double _PHASECAL
 #endif
 	inPinV = _inPinV;
 	VCAL = _VCAL;
-	PHASECAL = _PHASECAL;
+	_PHASECAL = ((double)PHASE_SCALE*(1.0 + _PHASECAL)) / 2.0;
+	PHASECAL1 = _PHASECAL;
+	PHASECAL2 = PHASE_SCALE - PHASECAL1;
 
 	offsetVlong = 0;
 
@@ -92,7 +148,9 @@ void EnergyMonitor::voltageTX(double _VCAL, double _PHASECAL)
 {
 	inPinV = 2;
 	VCAL = _VCAL;
-	PHASECAL = _PHASECAL;
+	_PHASECAL = ((double)PHASE_SCALE*(1.0 + _PHASECAL)) / 2.0;
+	PHASECAL1 = _PHASECAL;
+	PHASECAL2 = PHASE_SCALE - PHASECAL1;
 
 	unsigned long int start = millis();
 
@@ -147,21 +205,42 @@ void EnergyMonitor::calcVI(unsigned int Sampling_Time_ms)
 	//-------------------------------------------------------------------------------------------------------------------------
 	// 2) Main measurement loop
 	//------------------------------------------------------------------------------------------------------------------------- 
-	sampleVshort = analogRead(inPinV);
-
-	offsetVlong -= offsetVshort;
-	offsetVlong += sampleVshort;
-	offsetVshort = offsetVlong / DC_SAMPLES;
-	filteredV = sampleVshort - offsetVshort;
-
 	sampleIshort = analogRead(inPinI);
+
+	offsetIlong -= offsetIshort;
+	offsetIlong += sampleIshort;
+	offsetIshort = offsetIlong / DC_SAMPLES;
+
+	sampleVshort = analogRead(inPinV);
 
 	unsigned long start = millis();
 
 	for (SampleCount = 0; (millis() - start) < Sampling_Time_ms; SampleCount++)
 	{
-		lastFilteredV = filteredV;               //Used for delay/phase compensation
-		
+		//-----------------------------------------------------------------------------
+		// Read in raw voltage samples
+		//-----------------------------------------------------------------------------
+		while (bit_is_set(ADCSRA, ADSC));	//wait for AD conversion complete.
+
+		SelectAnalogPin(inPinI);	//Select the next pin to sample
+
+		sampleVshort = ADCL;	//read the ADC conversion result.
+		sampleVshort += (int)(ADCH<<8);
+
+		_SFR_BYTE(ADCSRA) |= _BV(ADSC); 	//start the next conversion
+
+		offsetVlong -= offsetVshort;
+		offsetVlong += sampleVshort;
+		offsetVshort = offsetVlong / DC_SAMPLES;
+		filteredV = sampleVshort - offsetVshort;
+
+		//-----------------------------------------------------------------------------
+		// Root-mean-square method voltage
+		//-----------------------------------------------------------------------------  
+		long int sqVlong = filteredV;
+		sqVlong *= sqVlong;                //1) square voltage values
+		sumVlong += sqVlong;               //2) sum
+
 		//-----------------------------------------------------------------------------
 		// Read in raw current samples
 		//-----------------------------------------------------------------------------
@@ -169,11 +248,8 @@ void EnergyMonitor::calcVI(unsigned int Sampling_Time_ms)
 
 		SelectAnalogPin(inPinV);	//Select the next pin to sample
 
-		//read the ADC conversion result.
-		uint8_t low = ADCL;
-		uint8_t high = ADCH;
-
-		sampleIshort = (int)(high << 8) + low;
+		sampleIshort = ADCL;	//read the ADC conversion result.
+		sampleIshort = (int)(ADCH<<8);
 
 		_SFR_BYTE(ADCSRA) |= _BV(ADSC); 	//start the next conversion
 
@@ -189,44 +265,10 @@ void EnergyMonitor::calcVI(unsigned int Sampling_Time_ms)
 		sqIlong *= sqIlong;                //1) square current values
 		sumIlong += sqIlong;               //2) sum 
 
-		//-----------------------------------------------------------------------------
-		// Read in raw voltage samples
-		//-----------------------------------------------------------------------------
-		while (bit_is_set(ADCSRA, ADSC));	//wait for AD conversion complete.
-
-		SelectAnalogPin(inPinI);	//Select the next pin to sample
-
-		//read the ADC conversion result.							
-		low = ADCL;
-		high = ADCH;
-
-		sampleVshort = (int)(high << 8) + low;
-
-		_SFR_BYTE(ADCSRA) |= _BV(ADSC); 	//start the next conversion
-
-		offsetVlong -= offsetVshort;
-		offsetVlong += sampleVshort;
-		offsetVshort = offsetVlong / DC_SAMPLES;
-		filteredV = sampleVshort - offsetVshort;
-
-		//-----------------------------------------------------------------------------
-		// C) Root-mean-square method voltage
-		//-----------------------------------------------------------------------------  
-		long int sqVlong = filteredV;
-		sqVlong *= sqVlong;                //1) square voltage values
-		sumVlong += sqVlong;               //2) sum
-
-		//-----------------------------------------------------------------------------
-		// E) Phase calibration
-		//-----------------------------------------------------------------------------
-		int phaseShiftedV = lastFilteredV + PHASECAL * (filteredV - lastFilteredV); 
-		
-		//-----------------------------------------------------------------------------
-		// F) Instantaneous power calculation
-		//-----------------------------------------------------------------------------   
-		long int instPlong = phaseShiftedV;
-		instPlong *= filteredI; 	//Instantaneous Power
-		sumPlong += instPlong;		//Sum  
+		long int instPlong = ((long)lastFilteredI*PHASECAL1) + ((long)filteredI*PHASECAL2);
+		lastFilteredI = filteredI;
+		instPlong *= filteredV; 	//Instantaneous Power
+		sumPlong += instPlong / PHASE_SCALE;	//Sum  
 	}
  
 	//-------------------------------------------------------------------------------------------------------------------------

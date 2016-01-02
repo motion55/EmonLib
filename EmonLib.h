@@ -45,11 +45,10 @@
 class EnergyMonitor
 {
 public:
-
-	void voltage(unsigned int _inPinV, double _VCAL, double _PHASECAL);
+	void voltage(unsigned int _inPinV, double _VCAL, double _PHASECAL = 0);
 	void current(unsigned int _inPinI, double _ICAL);
 
-	void voltageTX(double _VCAL, double _PHASECAL);
+	void voltageTX(double _VCAL, double _PHASECAL = 0);
 	void currentTX(unsigned int _channel, double _ICAL);
 
 	void calcVI(unsigned int Sampling_Time_ms);
@@ -69,13 +68,13 @@ private:
 	const unsigned long int sampling_time_ms = 1000;
 
 	//Set Voltage and current input pins
-	unsigned int inPinV;
-	unsigned int inPinI;
+	int inPinV;
+	int inPinI;
 	//Calibration coefficients
 	//These need to be set in order to obtain accurate results
 	double VCAL;
 	double ICAL;
-	double PHASECAL;
+	int PHASECAL1, PHASECAL2;
 
 	inline void SelectAnalogPin(unsigned int pin)
 	{
@@ -88,13 +87,17 @@ private:
 	};
 
 public:
+	inline void interrupt_handler() __attribute__((__always_inline__));
+	char channel_select;
+
 	//--------------------------------------------------------------------------------------
 	// Variable declaration for emon_calc procedure
 	//--------------------------------------------------------------------------------------
 	int sampleVshort;                //sample_ holds the raw analog read value
-	int sampleIshort;                     
+	int sampleIshort;
 
-	int lastFilteredV, filteredV, filteredI;          //Filtered_ is the raw analog value minus the DC offset
+	int lastFilteredV, lastFilteredI;
+	int	filteredV, filteredI;          //Filtered_ is the raw analog value minus the DC offset
 	long int offsetVlong, offsetIlong;   
 	int offsetVshort, offsetIshort;                 //Low-pass filter output               
 	long int sumVlong, sumIlong, sumPlong;
