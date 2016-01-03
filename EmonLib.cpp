@@ -19,14 +19,14 @@
 #define DC_SAMPLES  1024l
 #define PHASE_SCALE	256 
 
-static class EnergyMonitor *_instance;
+static class EnergyMonitor* _instance;
 
 ISR(ADC_vect)
 {
 	_instance->interrupt_handler();
 }
 
-void EnergyMonitor::interrupt_handler()
+void EnergyMonitor::interrupt_handler(void)
 {
 	if (channel_select==0)
 	{
@@ -45,7 +45,7 @@ void EnergyMonitor::interrupt_handler()
 
 		long int sqVlong = filteredV;
 		sqVlong *= sqVlong;                //1) square voltage values
-		sumVlong += sqVlong;               //2) sum
+		_sumVlong += sqVlong;               //2) sum
 	}
 	else
 	{
@@ -64,32 +64,87 @@ void EnergyMonitor::interrupt_handler()
 
 		long int sqIlong = filteredI;
 		sqIlong *= sqIlong;                //1) square current values
-		sumIlong += sqIlong;               //2) sum 
+		_sumIlong += sqIlong;               //2) sum 
 
 		long int instPlong = ((long)lastFilteredI*PHASECAL1) + ((long)filteredI*PHASECAL2);
 		instPlong *= filteredI; 	//Instantaneous Power
-		sumPlong += instPlong / PHASE_SCALE;	//Sum  
+		_sumPlong += instPlong / PHASE_SCALE;	//Sum  
 		lastFilteredI = filteredI;
+
+		_SampleCount++;
+		unsigned long int current_time = millis();
+		if ((current_time - sample_start) >= sampling_time_ms)
+		{
+			sample_start = current_time;
+			SampleCount = _SampleCount;
+			_SampleCount = 0;
+			sumVlong = _sumVlong;
+			sumIlong = _sumIlong;
+			sumPlong = _sumPlong;
+			_sumVlong = 0;
+			_sumIlong = 0;
+			_sumPlong = 0;
+			SampleReady = 1;
+		}
 	}
 }
 
-void EnergyMonitor::StartMeter(void)
+void EnergyMonitor::startMeter(void)
 {
 	if (!MeterStarted)
 	{
+		SupplyVoltage = readVcc();
+
+		SampleReady = 0;
 		MeterStarted = 1;
 		_instance = this;
+
+		sampleIshort = analogRead(inPinI);
+		offsetIlong -= offsetIshort;
+		offsetIlong += sampleIshort;
+		offsetIshort = offsetIlong / DC_SAMPLES;
+
 		SelectAnalogPin(inPinV);
 		channel_select = 0;
-		_SFR_BYTE(ADCSRA) |= _BV(ADSC);
-		_SFR_BYTE(ADCSRA) |= _BV(ADIE);
+		_SampleCount = 0;
+		_sumVlong = 0;
+		_sumIlong = 0;
+		_sumPlong = 0;
+		sample_start = millis();
+		_SFR_BYTE(ADCSRA) |= _BV(ADIE);	//enable A/D conversion complete interrupt.
+		_SFR_BYTE(ADCSRA) |= _BV(ADSC);	//start next conversion.
 	}
 }
 
-void EnergyMonitor::StopMeter(void)
+void EnergyMonitor::stopMeter(void)
 {
 	_SFR_BYTE(ADCSRA) &= ~_BV(ADIE); 
 	MeterStarted = 0;
+}
+
+bool EnergyMonitor::EnergyMeter(void)
+{
+	if (SampleReady)
+	{
+		SampleReady = 0;
+
+		double V_RATIO = (VCAL*SupplyVoltage) / (1000.0*ADC_COUNTS);
+		Vrms = V_RATIO * sqrt((double)sumVlong / SampleCount);
+
+		double I_RATIO = (ICAL*SupplyVoltage) / (1000.0*ADC_COUNTS);
+		Irms = I_RATIO * sqrt((double)sumIlong / SampleCount);
+
+		realPower = (V_RATIO * I_RATIO * sumPlong) / SampleCount;
+		apparentPower = Vrms * Irms;
+		powerFactor = realPower / apparentPower;
+
+		KwHrs += realPower / 3600000.0;
+
+		return true;
+	}
+	else if (!MeterStarted) startMeter();
+
+	return false;
 }
 
 //--------------------------------------------------------------------------------------
@@ -211,11 +266,11 @@ void EnergyMonitor::currentTX(unsigned int _channel, double _ICAL)
 //--------------------------------------------------------------------------------------
 void EnergyMonitor::calcVI(unsigned int Sampling_Time_ms)
 {
-	#if defined emonTxV3
-	int SupplyVoltage=3300;
-	#else 
-	int SupplyVoltage = readVcc();
-	#endif
+#if defined emonTxV3
+	SupplyVoltage=3300;
+#else 
+	SupplyVoltage = readVcc();
+#endif
 
 	//Reset accumulators
 	sumVlong = 0;
@@ -308,15 +363,16 @@ void EnergyMonitor::calcVI(unsigned int Sampling_Time_ms)
 	apparentPower = Vrms * Irms;
 	powerFactor=realPower / apparentPower;
 
+	KwHrs += realPower / 3600000.0;
 }
 
 //--------------------------------------------------------------------------------------
 double EnergyMonitor::calcVrms(unsigned int Sampling_Time_ms)
 {
 #if defined emonTxV3
-	int SupplyVoltage = 3300;
+	SupplyVoltage = 3300;
 #else 
-	int SupplyVoltage = readVcc();
+	SupplyVoltage = readVcc();
 #endif
 
 	//Reset accumulators
@@ -362,9 +418,9 @@ double EnergyMonitor::calcVrms(unsigned int Sampling_Time_ms)
 double EnergyMonitor::calcIrms(unsigned int Sampling_Time_ms)
 {
 #if defined emonTxV3
-	int SupplyVoltage=3300;
+	SupplyVoltage=3300;
 #else 
-	int SupplyVoltage = readVcc();
+	SupplyVoltage = readVcc();
 #endif
 
 	//Reset accumulators
@@ -419,8 +475,9 @@ void EnergyMonitor::serialprint()
 	Serial.print(Irms);
 	Serial.print(' ');
 	Serial.print(powerFactor);
-	Serial.println(' ');
-	delay(100); 
+	Serial.print(' ');
+	Serial.println(KwHrs);
+	delay(100);
 }
 
 //thanks to http://hacking.majenko.co.uk/making-accurate-adc-readings-on-arduino

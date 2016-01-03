@@ -56,19 +56,22 @@ public:
 	double calcIrms(unsigned int Sampling_Time_ms);
 	void serialprint();
 
-	void StartMeter(void);
-	void StopMeter(void);
+	void startMeter(void);
+	void stopMeter(void);
+	bool EnergyMeter(void);
 
 	long readVcc();
 	//Useful value variables
-	double realPower,
+	double	realPower,
 			apparentPower,
 			powerFactor,
 			Vrms,
-			Irms;
+			Irms,
+			KwHrs;
 
 private:
 	const unsigned long int sampling_time_ms = 1000;
+	int SupplyVoltage;
 
 	//Set Voltage and current input pins
 	int inPinV;
@@ -91,6 +94,10 @@ private:
 
 	char MeterStarted;
 	char channel_select;
+	char SampleReady;
+	unsigned long int sample_start;
+	unsigned int _SampleCount;
+	long int _sumVlong, _sumIlong, _sumPlong;
 
 public:
 	inline void interrupt_handler();
