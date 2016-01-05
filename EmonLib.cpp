@@ -77,13 +77,16 @@ void EnergyMonitor::interrupt_handler(void)
 		{
 			sample_start = current_time;
 			SampleCount = _SampleCount;
+			AccumSampleCount += _SampleCount;
 			_SampleCount = 0;
-			sumVlong = _sumVlong;
-			sumIlong = _sumIlong;
-			sumPlong = _sumPlong;
+
+			sumVlong += _sumVlong;
+			sumIlong += _sumIlong;
+			sumPlong += _sumPlong;
 			_sumVlong = 0;
 			_sumIlong = 0;
 			_sumPlong = 0;
+
 			SampleReady = 1;
 		}
 	}
@@ -94,6 +97,10 @@ void EnergyMonitor::startMeter(void)
 	if (!MeterStarted)
 	{
 		SupplyVoltage = readVcc();
+
+		V_RATIO = (VCAL*SupplyVoltage) / (1000.0*ADC_COUNTS);
+		I_RATIO = (ICAL*SupplyVoltage) / (1000.0*ADC_COUNTS);
+		P_RATIO = V_RATIO * I_RATIO;
 
 		SampleReady = 0;
 		MeterStarted = 1;
@@ -126,19 +133,31 @@ bool EnergyMonitor::EnergyMeter(void)
 {
 	if (SampleReady)
 	{
+		uint8_t oldSREG = SREG;
+		cli();
+
 		SampleReady = 0;
 
-		double V_RATIO = (VCAL*SupplyVoltage) / (1000.0*ADC_COUNTS);
-		Vrms = V_RATIO * sqrt((double)sumVlong / SampleCount);
+		long int _sumVlong = sumVlong;
+		long int _sumIlong = sumIlong;
+		long int _sumPlong = sumPlong;
+		unsigned long int _AccumSampleCount = AccumSampleCount;
+		unsigned int _AccumSampleTime = AccumSampleTime;
+		sumVlong = 0;
+		sumIlong = 0;
+		sumPlong = 0;
+		AccumSampleCount = 0;
+		AccumSampleTime = 0;
 
-		double I_RATIO = (ICAL*SupplyVoltage) / (1000.0*ADC_COUNTS);
-		Irms = I_RATIO * sqrt((double)sumIlong / SampleCount);
+		SREG = oldSREG;
 
-		realPower = (V_RATIO * I_RATIO * sumPlong) / SampleCount;
+		Vrms = V_RATIO * sqrt((double)_sumVlong / _AccumSampleCount);
+		Irms = I_RATIO * sqrt((double)_sumIlong / _AccumSampleCount);
+
+		realPower = (P_RATIO * _sumPlong) / _AccumSampleCount;
 		apparentPower = Vrms * Irms;
 		powerFactor = realPower / apparentPower;
-
-		KwHrs += realPower / 3600000.0;
+		WattHrs += (realPower * _AccumSampleTime) / 3600.0;
 
 		return true;
 	}
@@ -352,10 +371,10 @@ void EnergyMonitor::calcVI(unsigned int Sampling_Time_ms)
 	//Calculation of the root of the mean of the voltage and current squared (rms)
 	//Calibration coefficients applied. 
 	
-	double V_RATIO = (VCAL*SupplyVoltage) / (1000.0*ADC_COUNTS);
+	V_RATIO = (VCAL*SupplyVoltage) / (1000.0*ADC_COUNTS);
 	Vrms = V_RATIO * sqrt((double)sumVlong / SampleCount);
 	
-	double I_RATIO = (ICAL*SupplyVoltage) / (1000.0*ADC_COUNTS);
+	I_RATIO = (ICAL*SupplyVoltage) / (1000.0*ADC_COUNTS);
 	Irms = I_RATIO * sqrt((double)sumIlong / SampleCount);
 
 	//Calculation power values
@@ -363,7 +382,7 @@ void EnergyMonitor::calcVI(unsigned int Sampling_Time_ms)
 	apparentPower = Vrms * Irms;
 	powerFactor=realPower / apparentPower;
 
-	KwHrs += realPower / 3600000.0;
+	WattHrs += realPower / 3600.0;
 }
 
 //--------------------------------------------------------------------------------------
@@ -408,7 +427,7 @@ double EnergyMonitor::calcVrms(unsigned int Sampling_Time_ms)
 		sumVlong += sqVlong;               //2) sum 
 	}
 
-	double V_RATIO = (VCAL*SupplyVoltage) / (1000.0*ADC_COUNTS);
+	V_RATIO = (VCAL*SupplyVoltage) / (1000.0*ADC_COUNTS);
 	Vrms = V_RATIO * sqrt((double)sumVlong / SampleCount);
 
 	return Vrms;
@@ -456,7 +475,7 @@ double EnergyMonitor::calcIrms(unsigned int Sampling_Time_ms)
 		sumIlong += sqIlong;               //2) sum 
 	}
 
-	double I_RATIO = (ICAL*SupplyVoltage)/(1000.0f*ADC_COUNTS);
+	I_RATIO = (ICAL*SupplyVoltage)/(1000.0f*ADC_COUNTS);
 	Irms = I_RATIO * sqrt((double)sumIlong / SampleCount); 
 
 	return Irms;
@@ -476,7 +495,7 @@ void EnergyMonitor::serialprint()
 	Serial.print(' ');
 	Serial.print(powerFactor);
 	Serial.print(' ');
-	Serial.println(KwHrs);
+	Serial.println(WattHrs);
 	delay(100);
 }
 

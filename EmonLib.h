@@ -67,7 +67,7 @@ public:
 			powerFactor,
 			Vrms,
 			Irms,
-			KwHrs;
+			WattHrs;
 
 private:
 	const unsigned long int sampling_time_ms = 1000;
@@ -78,8 +78,9 @@ private:
 	int inPinI;
 	//Calibration coefficients
 	//These need to be set in order to obtain accurate results
-	double VCAL;
-	double ICAL;
+	double VCAL, V_RATIO;
+	double ICAL, I_RATIO;
+	double P_RATIO;
 	int PHASECAL1, PHASECAL2;
 
 	inline void SelectAnalogPin(unsigned int pin)
@@ -115,6 +116,8 @@ public:
 	long int sumVlong, sumIlong, sumPlong;
 
 	unsigned int SampleCount;
+	unsigned long int AccumSampleCount;
+	unsigned int AccumSampleTime;
 };
 
 #endif
