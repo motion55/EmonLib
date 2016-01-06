@@ -78,6 +78,7 @@ void EnergyMonitor::interrupt_handler(void)
 			sample_start = current_time;
 			SampleCount = _SampleCount;
 			AccumSampleCount += _SampleCount;
+			AccumSampleTime++;
 			_SampleCount = 0;
 
 			sumVlong += _sumVlong;
@@ -133,14 +134,14 @@ bool EnergyMonitor::EnergyMeter(void)
 {
 	if (SampleReady)
 	{
-		uint8_t oldSREG = SREG;
-		cli();
+		uint8_t oldSREG = SREG;	//save status
+		cli();	//Disable interrupts while reading the results.
 
 		SampleReady = 0;
 
-		long int _sumVlong = sumVlong;
-		long int _sumIlong = sumIlong;
-		long int _sumPlong = sumPlong;
+		long int __sumVlong = sumVlong;
+		long int __sumIlong = sumIlong;
+		long int __sumPlong = sumPlong;
 		unsigned long int _AccumSampleCount = AccumSampleCount;
 		unsigned int _AccumSampleTime = AccumSampleTime;
 		sumVlong = 0;
@@ -149,14 +150,17 @@ bool EnergyMonitor::EnergyMeter(void)
 		AccumSampleCount = 0;
 		AccumSampleTime = 0;
 
-		SREG = oldSREG;
+		SREG = oldSREG;	//restore status
 
-		Vrms = V_RATIO * sqrt((double)_sumVlong / _AccumSampleCount);
-		Irms = I_RATIO * sqrt((double)_sumIlong / _AccumSampleCount);
+		Vrms = V_RATIO * sqrt((double)__sumVlong / _AccumSampleCount);
+		Irms = I_RATIO * sqrt((double)__sumIlong / _AccumSampleCount);
 
-		realPower = (P_RATIO * _sumPlong) / _AccumSampleCount;
+		realPower = (P_RATIO * __sumPlong) / _AccumSampleCount;
 		apparentPower = Vrms * Irms;
-		powerFactor = realPower / apparentPower;
+		if (apparentPower>0.0)
+			powerFactor = realPower / apparentPower;
+		else
+			powerFactor = 0.0;
 		WattHrs += (realPower * _AccumSampleTime) / 3600.0;
 
 		return true;
