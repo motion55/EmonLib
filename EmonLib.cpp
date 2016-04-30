@@ -15,6 +15,7 @@
 #else
 #include "WProgram.h"
 #endif
+#include "util\atomic.h"
 
 #define DC_SAMPLES  1024l
 #define PHASE_SCALE	256 
@@ -134,23 +135,27 @@ bool EnergyMonitor::EnergyMeter(void)
 {
 	if (SampleReady)
 	{
-		uint8_t oldSREG = SREG;	//save status
-		cli();	//Disable interrupts while reading the results.
+		long int __sumVlong;
+		long int __sumIlong;
+		long int __sumPlong;
+		unsigned long int _AccumSampleCount;
+		unsigned int _AccumSampleTime;
 
-		SampleReady = 0;
+		ATOMIC_BLOCK(ATOMIC_RESTORESTATE)
+		{
+			SampleReady = 0;
 
-		long int __sumVlong = sumVlong;
-		long int __sumIlong = sumIlong;
-		long int __sumPlong = sumPlong;
-		unsigned long int _AccumSampleCount = AccumSampleCount;
-		unsigned int _AccumSampleTime = AccumSampleTime;
-		sumVlong = 0;
-		sumIlong = 0;
-		sumPlong = 0;
-		AccumSampleCount = 0;
-		AccumSampleTime = 0;
-
-		SREG = oldSREG;	//restore status
+			__sumVlong = sumVlong;
+			__sumIlong = sumIlong;
+			__sumPlong = sumPlong;
+			_AccumSampleCount = AccumSampleCount;
+			_AccumSampleTime = AccumSampleTime;
+			sumVlong = 0;
+			sumIlong = 0;
+			sumPlong = 0;
+			AccumSampleCount = 0;
+			AccumSampleTime = 0;
+		}
 
 		Vrms = V_RATIO * sqrt((double)__sumVlong / _AccumSampleCount);
 		Irms = I_RATIO * sqrt((double)__sumIlong / _AccumSampleCount);
